@@ -1,43 +1,40 @@
 const Discord = require('discord.js');
 const client = new Discord.Client();
-var fs = require('fs');
+const fs = require('fs');
 const {promisify} = require('util');
 const readFile = promisify(fs.readFile);
-const fileStat = promisify(fs.stat);
+const sqlite3 = require('sqlite3');
+const database = require('./database.js');
+
+var db = new sqlite3.Database("./database.db");
+
+const config = JSON.parse(fs.readFileSync("./config.json"));
 
 var pendingReports = {};
 
-var leaderboard = [];
-try {
-	fs.readFile('./save/leaderboard.txt', 'utf8', (err, contents) => {
-		leaderboard = JSON.parse(contents);
-	});
-} catch(e) {
-	console.error(e);
-}
-
-var looking = {};
-var channelId = fs.readFileSync('./server/channel.txt',"utf8");
-
-var playing = {};
+var channelId = config.channelId;
 
 client.once('ready', () => {
 	console.log('Ready!');
 	client.on('message', message => {
-		if(!(message.content.startsWith("'") || message.content.startsWith("`") || message.content.startsWith("-")) || message.author.bot || (message.channel.id != channelId)) return;
+		if (!(message.content.startsWith("'") ||
+			message.content.startsWith("`") ||
+			message.content.startsWith("-")) ||
+			message.author.bot ||
+			(message.channel.id != channelId))
+			return;
 		try {
 			var cmd = message.content.toLowerCase().slice(1).split(/ +/);
 
 			var channel = message.channel;
-			console.log('got msg');
 			var mentions = message.mentions.users;
 			var tag = message.author.tag;
-
+			
 			var id = message.author.id;
 
 			switch(cmd[0]) {
 				case "register":
-					register(id, channel, tag);
+					register(id, channel);
 					break;
 				case "rep":
 					report(id, cmd, channel, mentions);
@@ -47,7 +44,6 @@ client.once('ready', () => {
 					break;
 				case "leaderboard":
 					sayLeaderboard(id, channel);
-					console.log('5');
 					break;
 				case "cancel":
 					cancelRep(id, cmd, channel, mentions);
@@ -67,7 +63,6 @@ client.once('ready', () => {
 				default:
 					sayUnrec(channel);
 			}
-			console.log('6');
 		} catch(e) {
 			console.error(e);
 		}
@@ -75,78 +70,86 @@ client.once('ready', () => {
 });
 
 async function nowPlaying(id, channel) {
-	if(!playing[id]) {
-		if(looking[id]) {
-			delete looking[id];
-			playing[id] = 0;
-			channel.send("You have been temporarily removed from the looking list, and will be re-added when you report game results. Good luck!");
-		} else {
+	database.togglePlaying(db, id).then(res => {
+		if (res == "NOT_LOOKING") {
 			channel.send("I didn't do anything because you weren't listed as looking for a game, but you can still report your results afterward with -rep [W/L/D] [player]")
+			return;
 		}
-	} else {
-		channel.send("You were already listed as playing, report the game results to be automatically added back to the looking list");
-	}
+		if (res == "DB_ERR") {
+			channel.send("An internal database error occured, sorry for the inconvenience.");
+			return;
+		}
+		if (res == "MARKED_PLAYING") {
+			channel.send("You have been temporarily removed from the looking list, and will be re-added when you report game results. Good luck! (If you wish to cancel, run the -playing command again.)");
+			return;
+		}
+		if (res == "REMOVED_PLAYING") {
+			channel.send("You canceled your game.")
+			return;
+		}
+	});
 }
 
 async function sayStats(id, channel) {
-	try {
-		var stat = await getStats('./save/accounts/'+id+'.txt');
-		if(stat) {
-			var user = JSON.parse(await readFile('./save/accounts/'+id+'.txt', 'utf8'));
-			var toWrite = "Your stats:\nRating:\t"+user.r+"\nW: "+user.w+"\tL: "+user.l+"\tD: "+user.d;
-			channel.send(toWrite);
-		} else {
-			channel.send("Want stats? Register with -register");
+	database.getStats(db, id).then(res => {
+		if (res == "NOT_REGISTERED") {
+			channel.send("You are not registered. Please register first with the command -register.")
+			return;
 		}
-	} catch(e) {
-		console.error(e);
-	}
+		if (res == "DB_ERR") {
+			channel.send("An internal database error occured, sorry for the inconvenience.");
+			return;
+		}
+
+		channel.send(new Discord.MessageEmbed()
+			.setTitle("Your stats")
+			.addField("Elo", res.elo, false)
+			.addField("Wins", res.wins, true)
+			.addField("Losses", res.losses, true)
+			.addField("Draws", res.draws, true)
+		);
+	});
 }
 
 async function listLooking(id, channel) {
-	try {
-		var lookingString = "";
-		var lookingArray = Object.keys(looking);
-		if(lookingArray.length > 0) {
-			lookingString = "Players currently looking for rated games:\n";
-			for(var i = 0; i < lookingArray.length; i++) {
-				var tag = looking[lookingArray[i]].tag;
-				var r = looking[lookingArray[i]].r;
-				lookingString += tag + "\t\t\t" + r + "\n";
-			}
-			if(looking[id]) {
-				lookingString += "\nYou are currently listed as looking for a game. To toggle this, use -looking";
-			} else{
-				lookingString += "\nYou are not currently listed as looking for a game. To toggle this, use -looking";
-			}
-		} else {
-			lookingString = "Nobody is currently listed as looking for a game. To list yourself, use -looking";
+	database.listLooking(db).then(async res => {
+		if (res == "DB_ERR") {
+			channel.send("An internal database error occured, sorry for the inconvenience.");
+			return;
 		}
-		channel.send(lookingString);
-	} catch(e) {
-		console.error(e);
-	}
+		if (res.length == 0) {
+			channel.send("Currently, there are no players looking for a ranked match");
+		}
+		else {
+			let msg = new Discord.MessageEmbed().setTitle("Users currently looking for a ranked match");
+			for (let u of res) {
+				let user = await client.users.fetch(u.discord_id.toString());
+				msg.addField(user.username + "#" + user.discriminator, "Elo : " + u.elo);
+			}
+			channel.send(msg);
+		}
+	});
 }
 
 async function toggleLooking(id, channel) {
-	try {
-		if(!looking[id]) {
-			var stat = await getStats('./save/accounts/'+id+'.txt');
-			if(stat) {
-				var user = JSON.parse(await readFile('./save/accounts/'+id+'.txt', 'utf8'));
-				looking[id] = {tag: user.tag, r: user.r, t: 0};
-				channel.send("You are now listed as looking for rated play.");
-				listLooking(id, channel);
-			} else {
-				channel.send("You must first register for rated play with -register");
-			}
-		} else {
-			delete looking[id];
-			channel.send("You are no longer listed as looking for a rated game");
+	database.toggleLooking(db, id).then(res => {
+		if (res == "NOT_REGISTERED") {
+			channel.send("You are not registered. Please register first with the command -register.")
+			return;
 		}
-	} catch(e) {
-		console.error(e);
-	}
+		if (res == "DB_ERR") {
+			channel.send("An internal database error occured, sorry for the inconvenience.");
+			return;
+		}
+		if (res == "MARKED_LOOKING") {
+			channel.send("You are now marked as looking for a ranked match.");
+			return;
+		}
+		if (res == "REMOVED_LOOKING") {
+			channel.send("You are no longer marked as looking for a ranked match / playing a ranked match.");
+			return;
+		}
+	});
 }
 
 async function cancelRep(id, cmd, channel, mentions) {
@@ -193,58 +196,144 @@ async function sayHelp(channel) {
 }
 
 async function sayLeaderboard(id, channel) {
-	console.log('saying leaderboard');
-	var leadString = "";
-	if(leaderboard.length < 1) {
-		leadString = "There is currently nobody on the leaderboard. Play a game to become #1!";
-	}
-	var c = 0;
-	while(c < leaderboard.length && c < 10) {
-		leadString += (c+1)+":\t" + leaderboard[c].r + "\t" + leaderboard[c].tag;
-		if(leaderboard[c].id == id) {
-			leadString += "\t<----\n";
-		} else {
-			leadString += "\n";
+	database.getLeaderboard(db).then(async res => {
+		if (res == "DB_ERR") {
+			channel.send("An internal database error occured, sorry for the inconvenience.");
+			return;
 		}
-		c++;
-	}
-	console.log('1');
-	var rank = 0;
-	for(var i = 0; i < leaderboard.length; i++) {
-		if(leaderboard[i].id == id) {
-			rank = i+1;
-		}
-	}
-
-
-	console.log('2');
-	var yours = "\n\n";
-	if(rank != 0 && rank > 10) {
-		var i = rank-3;
-		if(i < 10) {
-			i = 10;
-		}
-		while(i < leaderboard.length && i < rank+2) {
-			yours += (i+1)+":\t"+leaderboard[i].r+"\t"+leaderboard[i].tag;
-			if(i == rank-1) {
-				yours += "\t<----\n";
-			} else {
-				yours += "\n"
+		else {
+			if (res.length == 0) {
+				channel.send("There are currently no players registered.");
 			}
-			i++;
+			else {
+				let msg = new Discord.MessageEmbed().setTitle("Leaderboard");
+				let lb = "";
+				for (let i in res) {
+					let usershown = false;
+					if (i < 10) {
+						let user = await client.users.fetch(res[i].discord_id.toString());
+						let rank = parseInt(i) + 1;
+						lb += rank.toString() + " : " + user.username + "#" + user.discriminator + " Elo : " + res[i].elo;
+
+						if (res[i].discord_id == id) {
+							usershown = true;
+							lb += " <--- You";
+						}
+
+						lb += "\n"
+					}
+					else {
+						if (!usershown) {
+							if (res[i].discord_id == id) {
+								lb += "\n...\n\n";
+
+								let user = await client.users.fetch(res[i].discord_id.toString());
+								let rank = parseInt(i) + 1;
+								lb += rank.toString() + " : " + user.username + "#" + user.discriminator + " Elo : " + res[i].elo;
+
+								usershown = true;
+								lb += " <--- You";
+								lb += "\n"
+							}
+						}
+					}
+				}
+				msg.description = lb;
+				channel.send(msg);
+			}
 		}
-	}
-	leadString+= yours;
+	});
 
-
-	
-	console.log('3');
-	console.log("sending" + leadString);
-	channel.send(leadString);
-	console.log('4');
 }
 
 async function report(id, cmd, channel, mentions) {
+	database.getStats(db, id).then(res => {
+		if (res == "DB_ERR") {
+			channel.send("An internal database error occured, sorry for the inconvenience.");
+			return;
+		}
+		if (res == "NOT_REGISTERED") {
+			channel.send("You are not registered. Run -register before using this command.")
+			return;
+		}
+		let statsA = res;
+		if (mentions.first()) {
+			database.getStats(db, mentions.first().id).then(res => {
+				if (res == "DB_ERR") {
+					channel.send("An internal database error occured, sorry for the inconvenience.");
+					return;
+				}
+				if (res == "NOT_REGISTERED") {
+					channel.send("I don't recognize that player. Make sure you use the format -rep [W/L/D] [player], and that they have registered.");
+					return;
+				}
+				let statsB = res;
+				if (mentions.first().id != id) {
+					database.removePlaying(db, id).then(res => {
+						if (res == "DB_ERR") {
+							channel.send("An internal database error occured, sorry for the inconvenience.");
+							return;
+						}
+						var confirmed = false;
+						if (pendingReports[mentions.first().id] && pendingReports[mentions.first().id][id]) {
+							if (cmd[1] == "w" && pendingReports[mentions.first().id][id].l > 0) {
+								pendingReports[mentions.first().id][id].l--;
+								rec(statsA, statsB, 1, channel);
+								confirmed = true;
+								channel.send("Your win has been confirmed.");
+							} else if (cmd[1] == "l" && pendingReports[mentions.first().id][id].w > 0) {
+								pendingReports[mentions.first().id][id].w--;
+								rec(statsA, statsB, 0, channel);
+								confirmed = true;
+								channel.send("Your loss has been confirmed.");
+							} else if (cmd[1] == "d" && pendingReports[mentions.first().id][id].d > 0) {
+								pendingReports[mentions.first().id][id].d--;
+								rec(statsA, statsB, .5, channel);
+								confirmed = true;
+								channel.send("Your draw has been confirmed.");
+							}
+							console.log("checking reports");
+							if (pendingReports[mentions.first().id][id].w == 0 && pendingReports[mentions.first().id][id].l == 0 && pendingReports[mentions.first().id][id].d == 0) {
+								delete pendingReports[mentions.first().id][id];
+								var reportCount = Object.keys(pendingReports[mentions.first().id]).length;
+								if (reportCount < 1) {
+									delete pendingReports[mentions.first().id];
+								}
+							}
+							console.log("removed reports");
+						}
+						if (!confirmed) {
+							if (!pendingReports[id]) {
+								pendingReports[id] = {};
+							}
+							if (!pendingReports[id][mentions.first().id]) {
+								pendingReports[id][mentions.first().id] = { w: 0, l: 0, d: 0, t: 0 }
+							}
+							if (cmd[1] == "w") {
+								pendingReports[id][mentions.first().id].w++;
+								channel.send("Your win has been reported, and will be confirmed when your opponent reports their corresponding loss.");
+							} else if (cmd[1] == "l") {
+								pendingReports[id][mentions.first().id].l++;
+								channel.send("Your loss has been reported, and will be confirmed when your opponent reports their corresponding win.");
+							} else if (cmd[1] == "d") {
+								pendingReports[id][mentions.first().id].d++;
+								channel.send("Your draw has been reported, and will be confirmed when your opponent reports their corresponding draw.");
+							} else {
+								channel.send("I don't understand if it was a win, loss, or draw. Be sure to use the format -rep [W/L/D] [player]")
+							}
+						}
+					});
+				}
+				else {
+					channel.send("You cannot report results against yourself.");
+				}
+			})
+		}
+		else {
+			channel.send("I don't recognize that player. Make sure you use the format -rep [W/L/D] [player], and that they have registered.");
+		}
+	});
+	return;
 	try {
 		var stat = await getStats('./save/accounts/'+id+'.txt');
 		if(stat) {
@@ -258,54 +347,7 @@ async function report(id, cmd, channel, mentions) {
 						looking[id] = {tag: user.tag, r: user.r, t: 0};
 						console.log('added to looking');
 					}
-					var confirmed = false;
-					if(pendingReports[mentions.first().id] && pendingReports[mentions.first().id][id]) {
-						if(cmd[1] == "w" && pendingReports[mentions.first().id][id].l > 0) {
-							pendingReports[mentions.first().id][id].l--;
-							rec(id, mentions.first().id, 1, channel);
-							confirmed = true;
-							channel.send("Your win has been confirmed.");
-						} else if(cmd[1] == "l" && pendingReports[mentions.first().id][id].w > 0) {
-							pendingReports[mentions.first().id][id].w--;
-							rec(id, mentions.first().id, 0, channel);
-							confirmed = true;
-							channel.send("Your loss has been confirmed.");
-						} else if(cmd[1] == "d" && pendingReports[mentions.first().id][id].d > 0) {
-							pendingReports[mentions.first().id][id].d--;
-							rec(id, mentions.first().id, .5, channel);
-							confirmed = true;
-							channel.send("Your draw has been confirmed.");
-						} 
-						console.log("checking reports");
-						if(pendingReports[mentions.first().id][id].w == 0 && pendingReports[mentions.first().id][id].l == 0 && pendingReports[mentions.first().id][id].d == 0) {
-							delete pendingReports[mentions.first().id][id];
-							var reportCount = Object.keys(pendingReports[mentions.first().id]).length;
-							if(reportCount < 1) {
-								delete pendingReports[mentions.first().id];
-							}
-						}
-						console.log("removed reports");
-					}
-					if(!confirmed) {
-						if(!pendingReports[id]) {
-							pendingReports[id] = {};
-						}
-						if(!pendingReports[id][mentions.first().id]) {
-							pendingReports[id][mentions.first().id] = {w:0,l:0,d:0,t:0}
-						}
-						if(cmd[1] == "w") {
-							pendingReports[id][mentions.first().id].w++;
-							channel.send("Your win has been reported, and will be confirmed when your opponent reports their corresponding loss.");
-						} else if(cmd[1] == "l") {
-							pendingReports[id][mentions.first().id].l++;
-							channel.send("Your loss has been reported, and will be confirmed when your opponent reports their corresponding win.");
-						} else if(cmd[1] == "d") {
-							pendingReports[id][mentions.first().id].d++;
-							channel.send("Your draw has been reported, and will be confirmed when your opponent reports their corresponding draw.");
-						} else {
-							channel.send("I don't understand if it was a win, loss, or draw. Be sure to use the format -rep [W/L/D] [player]")
-						}
-					}
+					
 
 				} else {
 					channel.send("I don't recognize that player. Make sure you use the format -rep [W/L/D] [player], and that they have registered.");
@@ -322,18 +364,11 @@ async function report(id, cmd, channel, mentions) {
 	console.log("finished report");
 }
 
-async function rec(ida, idb, s, channel) {
-	console.log("starting rec")
-	pa = await getUser(ida);
-	pb = await getUser(idb);
-
-	console.log("pa: " + pa + " pb: " + pb);
-	console.log("pa.r: " + pa.r + " pb.r: " + pb.r);
-
+async function rec(statsA, statsB, s, channel) {
 	k = 25;
 
-	ac = Math.ceil(k*(s-(1/(1+Math.pow(10,(pb.r-pa.r)/400)))));
-	bc = Math.ceil(k*((1-s)-(1/(1+Math.pow(10,(pa.r-pb.r)/400)))));
+	ac = Math.ceil(k*(s-(1/(1+Math.pow(10,(statsB.elo-statsA.elo)/400)))));
+	bc = Math.ceil(k*((1-s)-(1/(1+Math.pow(10,(statsA.elo-statsB.elo)/400)))));
 
 	var achar = "";
 	if(ac > 0) {
@@ -344,59 +379,44 @@ async function rec(ida, idb, s, channel) {
 		bchar = "+";
 	}
 
-	console.log("pa.r: " + pa.r + " pb.r: " + pb.r);
-
-	pa.r += ac;
-	pb.r += bc;
-
-	console.log("pa.r: " + pa.r + " pb.r: " + pb.r);
+	statsA.elo += ac;
+	statsB.elo += bc;
 
 	if(s == 1) {
-		pa.w++;
-		pb.l++;
+		statsA.wins++;
+		statsB.losses++;
 	} else if(s == .5) {
-		pa.d++;
-		pb.d++;
+		statsA.draws++;
+		statsB.draws++;
 	} else if(s == 0) {
-		pa.l++;
-		pb.w++;
-	}
-	console.log("did math")
-
-	write('./save/accounts/'+ida, JSON.stringify(pa));
-	write('./save/accounts/'+idb, JSON.stringify(pb));
-	console.log("wrote twice")
-	channel.send("New Ratings:\n"+pa.tag+": "+pa.r+" ("+achar+ac+")\nW: "+pa.w+" L: "+pa.l+" D: "+pa.d+"\n\n"+pb.tag+": "+pb.r+" ("+bchar+bc+")\nW: "+pb.w+" L: "+pb.l+" D: "+pb.d);
-	console.log("sent msg");
-    adjustLeaderboard(ida, pa.r, pa.tag);
-	adjustLeaderboard(idb, pb.r, pb.tag);
-	write('./save/leaderboard',JSON.stringify(leaderboard));
-	console.log("adjusted leaderboard");
-}
-
-function adjustLeaderboard(id, r, tag) {
-	var c = 0;
-	var found = false;
-	while(c < leaderboard.length && !found) {
-		if(leaderboard[c].id == id) {
-			leaderboard.splice(c, 1);
-			found = true;
-		}
-		c++;
+		statsA.losses++;
+		statsB.wins++;
 	}
 
-	var i = 0;
-	found = false;
-	while(i < leaderboard.length && !found) {
-		if(leaderboard[i].r <= r) {
-			leaderboard.splice(i, 0, {id: id, r: r, tag: tag});
-			found = true;
-		}
-		i++;
+	if (await database.updateStats(db, statsA.discord_id, statsA) == "DB_ERR") {
+		channel.send("An internal database error occured, sorry for the inconvenience.");
 	}
-	if(!found && leaderboard.length < 200) {
-		leaderboard.push({id: id, r: r, tag: tag});
+	if (await database.updateStats(db, statsB.discord_id, statsB) == "DB_ERR") {
+		channel.send("An internal database error occured, sorry for the inconvenience.");
 	}
+	let userA = await client.users.fetch(statsA.discord_id);
+	let userB = await client.users.fetch(statsB.discord_id);
+
+	channel.send(new Discord.MessageEmbed()
+		.setTitle("New Ratings")
+		.addField(userA.username + "#" + userA.discriminator,
+			"Elo : "      + statsA.elo +
+			"\nWins : "   + statsA.wins +
+			"\nLosses : " + statsA.losses + 
+			"\nDraws : "  + statsA.draws
+		)
+		.addField(userB.username + "#" + userB.discriminator,
+			"Elo : " + statsB.elo +
+			"\nWins : " + statsB.wins +
+			"\nLosses : " + statsB.losses +
+			"\nDraws : " + statsB.draws
+		)
+	);
 }
 
 async function getUser(id) {
@@ -413,52 +433,20 @@ async function sayUnrec(channel) {
 	channel.send("Unrecognized command. Use -help for more info.");
 }
 
-async function register(id, channel, tag) {
-	try {
-		var stat = await getStats('./save/accounts/'+id+'.txt');
-		if(stat) {
-			//file exists
-			channel.send("You already have an account!");
-		} else {
-			// file does not exist
-			var toWrite = JSON.stringify({
-				r: 1400,
-				w: 0,
-				l: 0,
-				d: 0,
-				tag: tag
-			});
-			write('./save/accounts/'+id, toWrite);
-			channel.send("You are now registered.");
+async function register(id, channel) {
+	database.registerUser(db, id).then(res => {
+		if (res == "OK") {
+			channel.send("You were registered successfully.");
+			return;
 		}
-	} catch(e) {
-		console.error(e);
-	}
-}
-
-async function write(path, data) {
-    try {
-        fs.writeFile(path+'TEMP.txt',data,(error) => {                  
-            if (error) throw error; 
-            fs.rename(path+'TEMP.txt', path+'.txt', (error2) => {
-                if (error2) throw error2;
-                return;
-            });
-        });
-    } catch(e) {
-        console.error(e);
-    }
-}
-
-async function getStats(file) {
-    var stat;
-    try {
-        stat = await fileStat(file);
-        return stat;
-    } catch(e) {
-        console.error(e);
-        return false;
-    }
+		if (res == "ALREADY_CREATED") {
+			channel.send("You already are registered as an user.");
+		}
+		if (res == "DB_ERR") {
+			channel.send("An internal database error occured, sorry for the inconvenience.");
+			return;
+		}
+	});
 }
 
 setInterval(function() {
@@ -491,16 +479,12 @@ setInterval(function() {
 	}
 }, 21600000);
 
-setInterval(function() {
-	var lookers = Object.keys(looking);
-	for(var i = 0; i < lookers.length; i++) {
-		var look = looking[lookers[i]];
-		if(look.t > 0) {
-			delete looking[lookers[i]];
-		} else {
-			look.t++;
-		}
+database.initialize(db).then(res => {
+	if (res == "OK") {
+		client.login(config.auth);
 	}
-}, 3600000);
-
-client.login(fs.readFileSync('./server/auth.txt',"utf8"));
+	else {
+		console.log("FATAL ERROR : failed to initialize database.");
+		process.exit(1);
+	}
+})
