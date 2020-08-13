@@ -1,0 +1,22 @@
+{
+  "name": "discordbotelo",
+  "version": "1.0.0",
+  "description": "A discord bot to manage player's elos",
+  "main": "app.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/wafflescripter/discordBotElo.git"
+  },
+  "author": "wafflescripter",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/wafflescripter/discordBotElo/issues"
+  },
+  "homepage": "https://github.com/wafflescripter/discordBotElo#readme",
+  "dependencies": {
+    "discord.js": "^12.2.0"
+  }
+}

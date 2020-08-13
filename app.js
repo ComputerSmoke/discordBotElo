@@ -5,6 +5,8 @@ const {promisify} = require('util');
 const readFile = promisify(fs.readFile);
 const fileStat = promisify(fs.stat);
 
+const config = JSON.parse(fs.readFileSync("./config.json"));
+
 var pendingReports = {};
 
 var leaderboard = [];
@@ -17,7 +19,8 @@ try {
 }
 
 var looking = {};
-var channelId = fs.readFileSync('./server/channel.txt',"utf8");
+var channelId = config.channelId;
+console.log(channelId);
 
 var playing = {};
 
@@ -503,4 +506,4 @@ setInterval(function() {
 	}
 }, 3600000);
 
-client.login(fs.readFileSync('./server/auth.txt',"utf8"));
+client.login(config.auth);
