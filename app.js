@@ -111,7 +111,7 @@ async function sayStats(id, channel) {
 	});
 }
 
-async function listLooking(id, channel) {
+async function listLooking(channel) {
 	database.listLooking(db).then(async res => {
 		if (res == "DB_ERR") {
 			channel.send("An internal database error occured, sorry for the inconvenience.");
@@ -143,6 +143,7 @@ async function toggleLooking(id, channel) {
 		}
 		if (res == "MARKED_LOOKING") {
 			channel.send("You are now marked as looking for a ranked match.");
+			listLooking(channel);
 			return;
 		}
 		if (res == "REMOVED_LOOKING") {
@@ -405,13 +406,13 @@ async function rec(statsA, statsB, s, channel) {
 	channel.send(new Discord.MessageEmbed()
 		.setTitle("New Ratings")
 		.addField(userA.username + "#" + userA.discriminator,
-			"Elo : "      + statsA.elo +
+			"Elo : "      + statsA.elo + " (" + achar + ac + ")" +
 			"\nWins : "   + statsA.wins +
 			"\nLosses : " + statsA.losses + 
 			"\nDraws : "  + statsA.draws
 		)
 		.addField(userB.username + "#" + userB.discriminator,
-			"Elo : " + statsB.elo +
+			"Elo : " + statsB.elo + " (" + bchar + bc + ")" +
 			"\nWins : " + statsB.wins +
 			"\nLosses : " + statsB.losses +
 			"\nDraws : " + statsB.draws
