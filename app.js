@@ -49,7 +49,7 @@ client.once('ready', () => {
 					cancelRep(id, cmd, channel, mentions);
 					break;
 				case "looking":
-					toggleLooking(id, channel);
+					toggleLooking(id, channel, message.member);
 					break;
 				case "look":
 					listLooking(id, channel);
@@ -131,7 +131,7 @@ async function listLooking(channel) {
 	});
 }
 
-async function toggleLooking(id, channel) {
+async function toggleLooking(id, channel, member) {
 	database.toggleLooking(db, id).then(res => {
 		if (res == "NOT_REGISTERED") {
 			channel.send("You are not registered. Please register first with the command -register.")
@@ -144,10 +144,12 @@ async function toggleLooking(id, channel) {
 		if (res == "MARKED_LOOKING") {
 			channel.send("You are now marked as looking for a ranked match.");
 			listLooking(channel);
+			member.roles.add(config.roleId);
 			return;
 		}
 		if (res == "REMOVED_LOOKING") {
 			channel.send("You are no longer marked as looking for a ranked match / playing a ranked match.");
+			member.roles.remove(config.roleId);
 			return;
 		}
 	});
