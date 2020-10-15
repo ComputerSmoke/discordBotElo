@@ -51,9 +51,6 @@ client.once('ready', () => {
 				case "looking":
 					toggleLooking(id, channel, message.member);
 					break;
-				case "look":
-					listLooking(id, channel);
-					break;
 				case "stats":
 					sayStats(id, channel);
 					break;
@@ -111,26 +108,6 @@ async function sayStats(id, channel) {
 	});
 }
 
-async function listLooking(channel) {
-	database.listLooking(db).then(async res => {
-		if (res == "DB_ERR") {
-			channel.send("An internal database error occured, sorry for the inconvenience.");
-			return;
-		}
-		if (res.length == 0) {
-			channel.send("Currently, there are no players looking for a ranked match");
-		}
-		else {
-			let msg = new Discord.MessageEmbed().setTitle("Users currently looking for a ranked match");
-			for (let u of res) {
-				let user = await client.users.fetch(u.discord_id.toString());
-				msg.addField(user.username + "#" + user.discriminator, "Elo : " + u.elo);
-			}
-			channel.send(msg);
-		}
-	});
-}
-
 async function toggleLooking(id, channel, member) {
 	database.toggleLooking(db, id).then(res => {
 		if (res == "NOT_REGISTERED") {
@@ -143,7 +120,6 @@ async function toggleLooking(id, channel, member) {
 		}
 		if (res == "MARKED_LOOKING") {
 			channel.send("You are now marked as looking for a ranked match.");
-			listLooking(channel);
 			member.roles.add(config.roleId);
 			return;
 		}
@@ -195,7 +171,7 @@ async function cancelRep(id, cmd, channel, mentions) {
 }
 
 async function sayHelp(channel) {
-	channel.send("-register\t:\tRegister for rated play\n-rep [W/L/D] [opponent]\t:\tReport the results of a rated game. Both players must do this.\n-leaderboard\t:\tView the leaderboard\n-looking\t:\tList yourself as looking for a rated game\n-look\t:\tView the list of players looking for a rated game\n-cancel [W/L/D] [player]\t:\tCancel a pending game report\n-stats\t:\tView your rating\n-playing\t:\tRemove yourself from the looking for game list until you report the results of a game");
+	channel.send("-register\t:\tRegister for rated play\n-rep [W/L/D] [opponent]\t:\tReport the results of a rated game. Both players must do this.\n-leaderboard\t:\tView the leaderboard\n-looking\t:\tList yourself as looking for a rated game\n-cancel [W/L/D] [player]\t:\tCancel a pending game report\n-stats\t:\tView your rating\n-playing\t:\tRemove yourself from the looking for game list until you report the results of a game");
 }
 
 async function sayLeaderboard(id, channel) {
