@@ -1,0 +1,5 @@
+{
+  "channelId": "BOT_CHANNEL_ID_HERE",
+  "auth": "DISCORD_TOKEN_HERE",
+  "roleId":"LOOKING_ROLE_ID_HERE"
+}
