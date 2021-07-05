@@ -203,7 +203,7 @@ const listLooking = (db) => {
  */
 const getLeaderboard = (db) => {
 	return new Promise((resolve, reject) => {
-		db.all("SELECT discord_id, elo FROM users ORDER BY elo DESC", (err, res) => {
+		db.all("SELECT discord_id, elo, wins, losses, draws FROM users WHERE wins + losses + draws >= 4 ORDER BY elo DESC", (err, res) => {
 			if (err) {
 				console.log(err);
 				resolve("DB_ERR");
