@@ -228,7 +228,7 @@ const removePlaying = (db, discord_id) => {
 				return;
 			}
 			if (res.length == 0) {
-				resolve("OK");
+				resolve("OK_NOTHING");
 				return;
 			}
 			else {
@@ -238,7 +238,7 @@ const removePlaying = (db, discord_id) => {
 						resolve("DB_ERR");
 						return;
 					}
-					resolve("OK");
+					resolve("OK_UPDATED");
 					return;
 				});
 			}

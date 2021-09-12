@@ -31,6 +31,7 @@ client.once('ready', () => {
 			var tag = message.author.tag;
 			
 			var id = message.author.id;
+			var member = message.member;
 
 			let arg = -1;
 			if(cmd.length > 1) {
@@ -42,7 +43,7 @@ client.once('ready', () => {
 					register(id, channel);
 					break;
 				case "rep":
-					report(id, cmd, channel, mentions);
+					report(id, cmd, channel, mentions, member);
 					break;
 				case "help":
 					sayHelp(channel);
@@ -54,13 +55,13 @@ client.once('ready', () => {
 					cancelRep(id, cmd, channel, mentions);
 					break;
 				case "looking":
-					toggleLooking(id, channel, message.member);
+					toggleLooking(id, channel, member);
 					break;
 				case "stats":
 					sayStats(id, channel);
 					break;
 				case "playing":
-					nowPlaying(id, channel);
+					nowPlaying(id, channel, member);
 					break;
 				default:
 					sayUnrec(channel);
@@ -71,7 +72,7 @@ client.once('ready', () => {
 	});
 });
 
-async function nowPlaying(id, channel) {
+async function nowPlaying(id, channel, member) {
 	database.togglePlaying(db, id).then(res => {
 		if (res == "NOT_LOOKING") {
 			channel.send("I didn't do anything because you weren't listed as looking for a game, but you can still report your results afterward with -rep [W/L/D] [player]")
@@ -83,10 +84,12 @@ async function nowPlaying(id, channel) {
 		}
 		if (res == "MARKED_PLAYING") {
 			channel.send("You have been temporarily removed from the looking list, and will be re-added when you report game results. Good luck! (If you wish to cancel, run the -playing command again.)");
+			member.roles.remove(config.roleId);
 			return;
 		}
 		if (res == "REMOVED_PLAYING") {
 			channel.send("You canceled your game.")
+			member.roles.add(config.roleId);
 			return;
 		}
 	});
@@ -254,7 +257,7 @@ async function sayLeaderboard(id, channel, arg) {
 
 }
 
-async function report(id, cmd, channel, mentions) {
+async function report(id, cmd, channel, mentions, member) {
 	database.getStats(db, id).then(res => {
 		if (res == "DB_ERR") {
 			channel.send("An internal database error occured, sorry for the inconvenience.");
@@ -281,6 +284,8 @@ async function report(id, cmd, channel, mentions) {
 						if (res == "DB_ERR") {
 							channel.send("An internal database error occured, sorry for the inconvenience.");
 							return;
+						} else if (res == "OK_UPDATED") {
+							member.roles.add(config.roleId);
 						}
 						var confirmed = false;
 						if (pendingReports[mentions.first().id] && pendingReports[mentions.first().id][id]) {
