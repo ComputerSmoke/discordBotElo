@@ -457,15 +457,6 @@ setInterval(function() {
 			delete pendingReports[reporters[i]];
 		}
 	}
-	var players = Object.keys(playing);
-	for(var i = 0; i < players.length; i++) {
-		var player = playing[players[i]];
-		if(player > 0) {
-			delete playing[players[i]];
-		} else {
-			player++;
-		}
-	}
 }, 21600000);
 
 database.initialize(db).then(res => {
