@@ -29,7 +29,7 @@ client.once('ready', () => {
 			var channel = message.channel;
 			var mentions = message.mentions.users;
 			var tag = message.author.tag;
-			
+
 			var id = message.author.id;
 			var member = message.member;
 
@@ -207,54 +207,49 @@ async function sayLeaderboard(id, channel, arg) {
 					}
 					lb += "\n"
 				}
-				if(!usershown) {
-					let startIdx = 0;
-
-					if(arg != -1) {
-						try {
-							arg = parseInt(arg);
-						} catch {
-							arg = -1;
+        if(arg != -1) {
+          try {
+            arg = parseInt(arg);
+          } catch {
+            arg = -1;
+          }
+        }
+        let printMore = true
+        if(arg == -1 || arg < 10 || arg > res.length) {
+          printMore=false
+					for(let i = 10; i < res.length; i++) {
+						if (res[i].discord_id == id) {
+							arg = i
+							printMore=true
+							break;
 						}
 					}
-
-					if(arg == -1 || arg < 12 || arg > res.length) {
-						for(let i = 10; i < res.length; i++) {
-							if (res[i].discord_id == id) {
-								startIdx = Math.max(i-2, 10);
-								usershown = true;
-								break;
-							}
-						}
-					} else {
-						startIdx = arg-2;
-						usershown = true;
-					}
-
-					lb += "...\n";
-					if(usershown) {
-						for(let i = startIdx; i < startIdx+3 && i < res.length; i++) {
-							let user = await client.users.fetch(res[i].discord_id.toString());
-							let rank = i + 1;
-							lb += rank.toString() + " : " + user.username + "#" + user.discriminator + " Elo : " + res[i].elo;
-
-							if(res[i].discord_id == id) {
-								lb += " <--- You";
-							}
-							if(i == startIdx+2 || i == res.length-1) lb += "\n..."
-							lb += "\n"
-						}
-					} else {
+          if(!printMore) {
 						lb += "Complete 4 ranked matches to be placed on the leaderboard.";
 					}
 				}
+        if(printMore){
+          let startIdx = arg-2;
+          if (Math.max(startIdx,10)!=startIdx){
+             lb += "...\n";
+          }
+  				for(let i = Math.max(startIdx,10); i < startIdx+3 && i < res.length; i++) {
+  					let user = await client.users.fetch(res[i].discord_id.toString());
+  					let rank = i + 1;
+  					lb += rank.toString() + " : " + user.username + "#" + user.discriminator + " Elo : " + res[i].elo;
 
+  					if(res[i].discord_id == id) {
+  						lb += " <--- You";
+  					}
+  					if(i == startIdx+2 && i != res.length-1) lb += "\n..."
+  					lb += "\n"
+  				}
+  			}
 				msg.description = lb;
 				channel.send(msg);
 			}
 		}
 	});
-
 }
 
 async function report(id, cmd, channel, mentions, member) {
@@ -396,7 +391,7 @@ async function rec(statsA, statsB, s, channel) {
 		.addField(userA.username + "#" + userA.discriminator,
 			"Elo : "      + statsA.elo + " (" + achar + ac + ")" +
 			"\nWins : "   + statsA.wins +
-			"\nLosses : " + statsA.losses + 
+			"\nLosses : " + statsA.losses +
 			"\nDraws : "  + statsA.draws
 		)
 		.addField(userB.username + "#" + userB.discriminator,
