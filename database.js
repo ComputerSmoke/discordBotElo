@@ -8,8 +8,8 @@ const initialize = (db) => {
 		db.run(`CREATE TABLE IF NOT EXISTS users (
 		discord_id TEXT NOT NULL PRIMARY KEY,
 		elo INT NOT NULL,
-        wins INT NOT NULL,
-        losses INT NOT NULL,
+		wins INT NOT NULL,
+		losses INT NOT NULL,
 		draws INT NOT NULL)`, (err, res) => {
 			if (err) {
 				console.log(err);
