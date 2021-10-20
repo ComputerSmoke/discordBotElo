@@ -214,18 +214,20 @@ async function sayLeaderboard(id, channel, arg) {
 						arg = -1;
 					}
 				}
-				let printMore = true
+				let printMore = true;
 				if(arg == -1 || arg < 10 || arg > res.length) {
-					printMore=false
-					for(let i = 10; i < res.length; i++) {
-						if (res[i].discord_id == id) {
-							arg = i
-							printMore=true
-							break;
+					printMore = false;
+					if (!usershown){
+						for(let i = 10; i < res.length; i++) {
+							if (res[i].discord_id == id) {
+								arg = i + 1;
+								printMore = true;
+								break;
+							}
 						}
-					}
-					if(!printMore) {
-						lb += "Complete 4 ranked matches to be placed on the leaderboard.";
+						if(!printMore) {
+							lb += "Complete 4 ranked matches to be placed on the leaderboard.";
+						}
 					}
 				}
 				if(printMore){
