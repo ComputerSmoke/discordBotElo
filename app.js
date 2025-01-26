@@ -1,5 +1,13 @@
 const Discord = require('discord.js');
-const client = new Discord.Client();
+const client = new Discord.Client({intents: Object.values(Discord.GatewayIntentBits)
+/*[
+
+Discord.GatewayIntentBits.Guilds,
+Discord.GatewayIntentBits.GuildMessages,
+Discord.GatewayIntentBits.GuildMembers,
+Discord.GatewayIntentBits.MessageContent
+]*/
+});
 const fs = require('fs');
 const {promisify} = require('util');
 const readFile = promisify(fs.readFile);
@@ -16,7 +24,7 @@ var channelId = config.channelId;
 
 client.once('ready', () => {
 	console.log('Ready!');
-	client.on('message', message => {
+	client.on('messageCreate', message => {
 		if (!(message.content.startsWith("'") ||
 			message.content.startsWith("`") ||
 			message.content.startsWith("-")) ||
@@ -95,6 +103,15 @@ async function nowPlaying(id, channel, member) {
 	});
 }
 
+Discord.EmbedBuilder.prototype.addField = function(a,b,c){
+  if(c===undefined){
+    this.addFields([{name:a,value:b}])
+  }
+  else{
+    this.addFields([{name:a,value:b,inline:c}])
+  }
+}
+
 async function sayStats(id, channel) {
 	database.getStats(db, id).then(res => {
 		if (res == "NOT_REGISTERED") {
@@ -106,12 +123,13 @@ async function sayStats(id, channel) {
 			return;
 		}
 
-		channel.send(new Discord.MessageEmbed()
+		channel.send({embeds:[new Discord.EmbedBuilder()
 			.setTitle("Your stats")
-			.addField("Elo", res.elo, false)
-			.addField("Wins", res.wins, true)
-			.addField("Losses", res.losses, true)
-			.addField("Draws", res.draws, true)
+			.addFields([{name:"Elo", value:res.elo.toString(), inline:false},
+				{name:"Wins", value:res.wins.toString(), inline:true},
+				{name:"Losses", value:res.losses.toString(), inline:true},
+				{name:"Draws",value:res.draws.toString(),inline:true}]
+			)]}
 		);
 	});
 }
@@ -192,7 +210,7 @@ async function sayLeaderboard(id, channel, arg) {
 			if (res.length == 0) {
 				channel.send("There are currently no players registered.");
 			} else {
-				let msg = new Discord.MessageEmbed().setTitle("Leaderboard");
+				let msg = new Discord.EmbedBuilder().setTitle("Leaderboard");
 				let lb = "";
 				let usershown = false;
 				//print top 10
@@ -247,8 +265,8 @@ async function sayLeaderboard(id, channel, arg) {
 							lb += "\n"
 						}
 					}
-				msg.description = lb;
-				channel.send(msg);
+				msg.setDescription(lb);
+				channel.send({embeds:[msg]});
 			}
 		}
 	});
@@ -388,7 +406,7 @@ async function rec(statsA, statsB, s, channel) {
 	let userA = await client.users.fetch(statsA.discord_id);
 	let userB = await client.users.fetch(statsB.discord_id);
 
-	channel.send(new Discord.MessageEmbed()
+	channel.send({embeds:[new Discord.EmbedBuilder()
 		.setTitle("New Ratings")
 		.addField(userA.username + "#" + userA.discriminator,
 			"Elo : "      + statsA.elo + " (" + achar + ac + ")" +
@@ -401,7 +419,7 @@ async function rec(statsA, statsB, s, channel) {
 			"\nWins : " + statsB.wins +
 			"\nLosses : " + statsB.losses +
 			"\nDraws : " + statsB.draws
-		)
+		)]}
 	);
 }
 
