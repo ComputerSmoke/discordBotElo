@@ -105,10 +105,10 @@ async function nowPlaying(id, channel, member) {
 
 Discord.EmbedBuilder.prototype.addField = function(a,b,c){
   if(c===undefined){
-    this.addFields([{name:a,value:b}])
+    return this.addFields([{name:a,value:b}])
   }
   else{
-    this.addFields([{name:a,value:b,inline:c}])
+    return this.addFields([{name:a,value:b,inline:c}])
   }
 }
 
